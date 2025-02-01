@@ -2,7 +2,7 @@ require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
-
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -32,6 +32,7 @@ async function run() {
 
     const userCollection = client.db("microTasker").collection("user");
     const tasksCollection = client.db("microTasker").collection("tasks");
+    const paymentsCollection = client.db("microTasker").collection("payments");
 
     // user API with coin
     app.post("/user", async (req, res) => {
@@ -69,18 +70,73 @@ async function run() {
       const { task_title } = req.query;
       const result = await tasksCollection.findOne({ task_title });
 
-      app.get("/tasks/:email", async (req, res) => {
-        const { email } = req.params;
-        const result = await tasksCollection.find({ email }).toArray();
         res.send(result);
-      });
+    });
 
-      //   if (!result) {
-      //     return res.send(null);  // Explicitly return null if no task is found
-      // }
-
+    app.get("/tasks/:email", async (req, res) => {
+      const { email } = req.params;
+      const result = await tasksCollection.find({ email }).toArray();
       res.send(result);
     });
+
+    app.put("/tasks/:id", async (req, res) => {
+      const { id } = req.params;
+      const { task_title, task_detail, submission_info } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedTask = {
+        $set: {
+          task_title,
+          task_detail,
+          submission_info,
+        },
+      };
+
+      const result = await tasksCollection.updateOne(filter, updatedTask);
+      res.send(result);
+    });
+
+    app.delete('/tasks/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await tasksCollection.deleteOne(query);
+      res.send(result);
+    })
+
+    // Payment intent
+
+    app.post('/create-payment-intent', async(req,res)=>{
+      const {price} = req.body
+      const amount = parseInt(price*100)
+     console.log(amount );
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types:['card']
+
+      })
+
+      res.send({
+        clientSecret : paymentIntent.client_secret
+      })
+    })
+
+    // payment API
+
+    app.post('/payments',async(req,res)=>{
+      const payment = req.body
+      const paymentResult = await paymentsCollection.insertOne(payment)
+
+      res.send(paymentResult)
+    })
+
+    app.get('/payments/:email',async(req,res)=>{
+      const query = {email:req.params.email}
+      const result = await paymentsCollection.find(query).toArray()
+
+      res.send(result)
+    })
+
+
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
