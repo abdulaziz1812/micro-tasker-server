@@ -33,8 +33,12 @@ async function run() {
     const userCollection = client.db("microTasker").collection("user");
     const tasksCollection = client.db("microTasker").collection("tasks");
     const paymentsCollection = client.db("microTasker").collection("payments");
-    const submissionsCollection = client.db("microTasker").collection("submission");
-    const withdrawalsCollection = client.db("microTasker").collection("withdrawals");
+    const submissionsCollection = client
+      .db("microTasker")
+      .collection("submission");
+    const withdrawalsCollection = client
+      .db("microTasker")
+      .collection("withdrawals");
 
     // user API with coin
     app.post("/user", async (req, res) => {
@@ -173,7 +177,7 @@ async function run() {
       const result = await submissionsCollection.find(query).toArray();
       res.send(result);
     });
-    
+
     // withdraw API
     app.post("/withdrawals", async (req, res) => {
       const withdrawals = req.body;
@@ -181,11 +185,71 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/withdrawals/pending", async (req, res) => {
+      const query = { status: "pending" };
+      const result = await withdrawalsCollection.find(query).toArray();
+      res.send(result);
+    });
 
+    app.put("/withdrawals/:id", async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedStatus = {
+        $set: {
+          status,
+        },
+      };
 
+      const result = await withdrawalsCollection.updateOne(
+        filter,
+        updatedStatus
+      );
+      res.send(result);
+    });
 
+    // stats
 
+    app.get("/admin-stats", async (req, res) => {
+      const totalWorkers = await userCollection.countDocuments({
+        role: "Worker",
+      });
+      const totalBuyers = await userCollection.countDocuments({
+        role: "Buyer",
+      });
 
+      const totalCoin = await userCollection
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              total: {
+                $sum: "$coin",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      const totalPayments = await paymentsCollection
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              total: {
+                $sum: "$price",
+              },
+            },
+          },
+        ])
+        .toArray();
+      res.send({
+        totalBuyers,
+        totalWorkers,
+        totalCoin: totalCoin[0]?.total || 0,
+        totalPayments: totalPayments[0]?.total || 0,
+      });
+    });
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
