@@ -60,6 +60,19 @@ async function run() {
     });
 
     // task API
+
+    app.get("/tasks/available", async (req, res) => {
+       const query = {required_workers: { $gt: 0 }}
+        const result = await tasksCollection.find(query).toArray();
+        res.send(result);
+    });
+
+    app.get("/task-details/:id", async (req, res) => {
+      const { id } = req.params;
+      const result = await tasksCollection.findOne({ _id: new ObjectId(id) });
+      res.send(result);
+   });
+
     app.post("/tasks", async (req, res) => {
       const newTask = req.body;
       const result = await tasksCollection.insertOne(newTask);
