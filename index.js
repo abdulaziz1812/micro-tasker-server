@@ -54,8 +54,7 @@ async function run() {
     });
 
     app.get("/users", async (req, res) => {
-      
-      const result = await userCollection.find().toArray()
+      const result = await userCollection.find().toArray();
       res.send(result);
     });
 
@@ -65,7 +64,6 @@ async function run() {
       const result = await userCollection.deleteOne(query);
       res.send(result);
     });
-
 
     app.patch("/user/:email", async (req, res) => {
       const { email } = req.params;
@@ -121,6 +119,20 @@ async function run() {
           task_title,
           task_detail,
           submission_info,
+        },
+      };
+
+      const result = await tasksCollection.updateOne(filter, updatedTask);
+      res.send(result);
+    });
+    
+    app.patch("/tasks/:id", async (req, res) => {
+      const { id } = req.params;
+      const { required_workers } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedTask = {
+        $set: {
+          required_workers
         },
       };
 
@@ -191,6 +203,51 @@ async function run() {
       const result = await submissionsCollection.find(query).toArray();
       res.send(result);
     });
+
+    app.get("/submissions/pending/:email", async (req, res) => {
+      const query = {
+        buyer_email: req.params.email,
+        status: "pending",
+      };
+      
+      const result = await submissionsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.patch("/submissions/approve/:id", async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedStatus = {
+        $set: {
+          status,
+        },
+      };
+
+      const result = await submissionsCollection.updateOne(
+        filter,
+        updatedStatus
+      );
+      res.send(result);
+    })
+    
+    app.patch("/submissions/rejected/:id", async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedStatus = {
+        $set: {
+          status,
+        },
+      };
+
+      const result = await submissionsCollection.updateOne(
+        filter,
+        updatedStatus
+      );
+      res.send(result);
+    })
+
 
     // withdraw API
     app.post("/withdrawals", async (req, res) => {
@@ -264,6 +321,43 @@ async function run() {
         totalPayments: totalPayments[0]?.total || 0,
       });
     });
+
+    app.get("/buyer-stats/:email", async (req, res) => {
+      const email = req.params.email;
+
+      const totalTask = await tasksCollection.countDocuments({ email });
+
+      const pendingTask = await tasksCollection
+        .aggregate([
+          { $match: { email } },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$required_workers" },
+            },
+          },
+        ])
+        .toArray();
+
+      const totalPayments = await paymentsCollection
+        .aggregate([
+          { $match: { email } }, // Filter by buyer's email
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$price" },
+            },
+          },
+        ])
+        .toArray();
+      res.send({
+        totalTask,
+        pendingTask: pendingTask[0]?.total || 0,
+        totalPayments: totalPayments[0]?.total || 0,
+      });
+    });
+
+    
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
