@@ -58,6 +58,19 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/best-workers", async (req, res) => {
+      
+        const bestWorkers = await userCollection
+          .find({ role: "Worker" }) 
+          .sort({ coins: -1 }) 
+          .limit(6) 
+          .toArray();
+    
+        res.send(bestWorkers);
+      
+    });
+    
+
     app.delete("/user/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -125,14 +138,14 @@ async function run() {
       const result = await tasksCollection.updateOne(filter, updatedTask);
       res.send(result);
     });
-    
+
     app.patch("/tasks/:id", async (req, res) => {
       const { id } = req.params;
       const { required_workers } = req.body;
       const filter = { _id: new ObjectId(id) };
       const updatedTask = {
         $set: {
-          required_workers
+          required_workers,
         },
       };
 
@@ -209,7 +222,17 @@ async function run() {
         buyer_email: req.params.email,
         status: "pending",
       };
-      
+
+      const result = await submissionsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.get("/submissions/approved/:email", async (req, res) => {
+      const query = {
+        worker_email: req.params.email,
+        status: "approved",
+      };
+
       const result = await submissionsCollection.find(query).toArray();
       res.send(result);
     });
@@ -229,8 +252,8 @@ async function run() {
         updatedStatus
       );
       res.send(result);
-    })
-    
+    });
+
     app.patch("/submissions/rejected/:id", async (req, res) => {
       const { id } = req.params;
       const { status } = req.body;
@@ -246,8 +269,7 @@ async function run() {
         updatedStatus
       );
       res.send(result);
-    })
-
+    });
 
     // withdraw API
     app.post("/withdrawals", async (req, res) => {
@@ -357,6 +379,40 @@ async function run() {
       });
     });
 
+    app.get("/worker-stats/:email", async (req, res) => {
+      const email = req.params.email;
+    
+     
+      const totalSubmission = await submissionsCollection.countDocuments({ worker_email: email });
+    
+      const pendingSubmission = await submissionsCollection.countDocuments({
+        worker_email: email,
+        status: "pending",
+      });
+    
+      
+      const totalEarningResult = await submissionsCollection
+        .aggregate([
+          { $match: { worker_email: email, status: "approved" } },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$payable_amount" },
+            },
+          },
+        ])
+        .toArray();
+    
+
+
+      const totalEarning = totalEarningResult[0]?.total || 0;
+    
+      res.send({
+        totalSubmission,
+        pendingSubmission,
+        totalEarning,
+      });
+    });
     
   } finally {
     // Ensures that the client will close when you finish/error
