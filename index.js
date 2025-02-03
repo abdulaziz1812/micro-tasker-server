@@ -5,7 +5,7 @@ const cors = require("cors");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 5000;
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
 app.use(cors());
 app.use(express.json());
 
@@ -44,85 +44,83 @@ async function run() {
 
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      const token = jwt.sign( user, process.env.ACCESS_TOKEN_SECRET, {expiresIn:"1h"});
-      res.send({token})
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+      res.send({ token });
     });
 
-    
-
-
     // middlewares
-    const verifyToken = (req, res , next) =>{
-      console.log('inside verify token',req.headers.authorization);
-      if(!req.headers.authorization){
-        return res.status(401).send({message: 'unauthorized access'})
+    const verifyToken = (req, res, next) => {
+      console.log("inside verify token", req.headers.authorization);
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: "unauthorized access" });
       }
-      const token = req.headers.authorization.split(' ')[1]
-      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) =>{
-        if(err){
-          return res.status(400).send({message: 'Invalid Token. Please log in again.'})
+      const token = req.headers.authorization.split(" ")[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res
+            .status(400)
+            .send({ message: "Invalid Token. Please log in again." });
         }
-        req.decoded = decoded
-        next()
-      })
-      
-    }
+        req.decoded = decoded;
+        next();
+      });
+    };
 
-    const verifyAdmin = async( req, res, next)=>{
-      const email = req.decoded.email
-      const query ={email: email}
-      const user = await userCollection.findOne(query)
-      const isAdmin =user?.role === 'Admin'
-      if(!isAdmin){
-        return res.status(403).send({message: 'forbidden access'})
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === "Admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
       }
-      next()
-    }
+      next();
+    };
 
-
-    app.get('/users/admin/:email', verifyToken, async(req,res)=>{
-      const email = req.params.email
-      if(email !== req.decoded.email){
-        return res.status(403).send({message: 'forbidden access'})
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
       }
 
-      const query = {email : email}
-      const user =await userCollection.findOne(query)
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
       let admin = false;
-      if(user){
-        admin = user?.role ==='Admin'
+      if (user) {
+        admin = user?.role === "Admin";
       }
-      res.send({admin})
-    })
+      res.send({ admin });
+    });
 
+    // middleware  verify buyer
+    const verifyBuyer = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isBuyer = user?.role === "Buyer";
+      if (!isBuyer) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      next();
+    };
 
-    // middleware  verify buyer 
-const verifyBuyer = async (req, res, next) => {
-  const email = req.decoded.email;
-  const query = { email: email };
-  const user = await userCollection.findOne(query);
-  const isBuyer = user?.role === 'Buyer';
-  if (!isBuyer) {
-    return res.status(403).send({ message: 'Forbidden access' });
-  }
-  next();
-};
+    // Route to check if the user is a Buyer
+    app.get("/users/buyer/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
 
-// Route to check if the user is a Buyer
-app.get('/users/buyer/:email', verifyToken, async (req, res) => {
-  const email = req.params.email;
-  if (email !== req.decoded.email) {
-    return res.status(403).send({ message: 'Forbidden access' });
-  }
-
-  const query = { email: email };
-  const user = await userCollection.findOne(query);
-  let buyer = false;
-  if (user) {
-    buyer = user?.role === 'Buyer';
-  }
-  res.send({ buyer });
-});
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let buyer = false;
+      if (user) {
+        buyer = user?.role === "Buyer";
+      }
+      res.send({ buyer });
+    });
 
     // user API with coin
     app.post("/user", async (req, res) => {
@@ -152,7 +150,7 @@ app.get('/users/buyer/:email', verifyToken, async (req, res) => {
       res.send(bestWorkers);
     });
 
-    app.delete("/user/:id", async (req, res) => {
+    app.delete("/user/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.deleteOne(query);
@@ -359,14 +357,16 @@ app.get('/users/buyer/:email', verifyToken, async (req, res) => {
       res.send(result);
     });
 
-    
-
-    app.get("/withdrawals/pending", verifyToken, verifyAdmin, async (req, res) => {
-      
-      const query = { status: "pending" };
-      const result = await withdrawalsCollection.find(query).toArray();
-      res.send(result)
-    });
+    app.get(
+      "/withdrawals/pending",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const query = { status: "pending" };
+        const result = await withdrawalsCollection.find(query).toArray();
+        res.send(result);
+      }
+    );
 
     app.put("/withdrawals/:id", async (req, res) => {
       const { id } = req.params;
@@ -447,7 +447,7 @@ app.get('/users/buyer/:email', verifyToken, async (req, res) => {
 
       const totalPayments = await paymentsCollection
         .aggregate([
-          { $match: { email } }, 
+          { $match: { email } },
           {
             $group: {
               _id: null,
