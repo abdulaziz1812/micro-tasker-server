@@ -5,7 +5,7 @@ const cors = require("cors");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 5000;
-
+const jwt = require('jsonwebtoken');
 app.use(cors());
 app.use(express.json());
 
@@ -40,6 +40,64 @@ async function run() {
       .db("microTasker")
       .collection("withdrawals");
 
+    // JWT Api
+
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign( user, process.env.ACCESS_TOKEN_SECRET, {expiresIn:"1h"});
+      res.send({token})
+    });
+
+    
+
+
+    // middlewares
+    const verifyToken = (req, res , next) =>{
+      console.log('inside verify token',req.headers.authorization);
+      if(!req.headers.authorization){
+        return res.status(401).send({message: 'unauthorized access'})
+      }
+      const token = req.headers.authorization.split(' ')[1]
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) =>{
+        if(err){
+          return res.status(400).send({message: 'Invalid Token. Please log in again.'})
+        }
+        req.decoded = decoded
+        next()
+      })
+      
+    }
+
+    const verifyAdmin = async( req, res, next)=>{
+      const email = req.decoded.email
+      const query ={email: email}
+      const user = await userCollection.findOne(query)
+      const isAdmin =user?.role === 'Admin'
+      if(!isAdmin){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+      next()
+    }
+
+
+    app.get('/users/admin/:email', verifyToken, async(req,res)=>{
+      const email = req.params.email
+      if(email !== req.decoded.email){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+
+      const query = {email : email}
+      const user =await userCollection.findOne(query)
+      let admin = false;
+      if(user){
+        admin = user?.role ==='Admin'
+      }
+      res.send({admin})
+    })
+
+
+ 
+
     // user API with coin
     app.post("/user", async (req, res) => {
       const newUser = req.body;
@@ -59,17 +117,14 @@ async function run() {
     });
 
     app.get("/best-workers", async (req, res) => {
-      
-        const bestWorkers = await userCollection
-          .find({ role: "Worker" }) 
-          .sort({ coins: -1 }) 
-          .limit(6) 
-          .toArray();
-    
-        res.send(bestWorkers);
-      
+      const bestWorkers = await userCollection
+        .find({ role: "Worker" })
+        .sort({ coins: -1 })
+        .limit(6)
+        .toArray();
+
+      res.send(bestWorkers);
     });
-    
 
     app.delete("/user/:id", async (req, res) => {
       const id = req.params.id;
@@ -278,10 +333,13 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/withdrawals/pending", async (req, res) => {
+    
+
+    app.get("/withdrawals/pending", verifyToken, verifyAdmin, async (req, res) => {
+      
       const query = { status: "pending" };
       const result = await withdrawalsCollection.find(query).toArray();
-      res.send(result);
+      res.send(result)
     });
 
     app.put("/withdrawals/:id", async (req, res) => {
@@ -363,7 +421,7 @@ async function run() {
 
       const totalPayments = await paymentsCollection
         .aggregate([
-          { $match: { email } }, // Filter by buyer's email
+          { $match: { email } }, 
           {
             $group: {
               _id: null,
@@ -381,16 +439,16 @@ async function run() {
 
     app.get("/worker-stats/:email", async (req, res) => {
       const email = req.params.email;
-    
-     
-      const totalSubmission = await submissionsCollection.countDocuments({ worker_email: email });
-    
+
+      const totalSubmission = await submissionsCollection.countDocuments({
+        worker_email: email,
+      });
+
       const pendingSubmission = await submissionsCollection.countDocuments({
         worker_email: email,
         status: "pending",
       });
-    
-      
+
       const totalEarningResult = await submissionsCollection
         .aggregate([
           { $match: { worker_email: email, status: "approved" } },
@@ -402,18 +460,15 @@ async function run() {
           },
         ])
         .toArray();
-    
-
 
       const totalEarning = totalEarningResult[0]?.total || 0;
-    
+
       res.send({
         totalSubmission,
         pendingSubmission,
         totalEarning,
       });
     });
-    
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
