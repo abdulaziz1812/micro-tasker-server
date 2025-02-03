@@ -96,7 +96,33 @@ async function run() {
     })
 
 
- 
+    // middleware  verify buyer 
+const verifyBuyer = async (req, res, next) => {
+  const email = req.decoded.email;
+  const query = { email: email };
+  const user = await userCollection.findOne(query);
+  const isBuyer = user?.role === 'Buyer';
+  if (!isBuyer) {
+    return res.status(403).send({ message: 'Forbidden access' });
+  }
+  next();
+};
+
+// Route to check if the user is a Buyer
+app.get('/users/buyer/:email', verifyToken, async (req, res) => {
+  const email = req.params.email;
+  if (email !== req.decoded.email) {
+    return res.status(403).send({ message: 'Forbidden access' });
+  }
+
+  const query = { email: email };
+  const user = await userCollection.findOne(query);
+  let buyer = false;
+  if (user) {
+    buyer = user?.role === 'Buyer';
+  }
+  res.send({ buyer });
+});
 
     // user API with coin
     app.post("/user", async (req, res) => {
