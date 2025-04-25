@@ -143,8 +143,8 @@ async function run() {
     app.get("/best-workers", async (req, res) => {
       const bestWorkers = await userCollection
         .find({ role: "Worker" })
-        .sort({ coins: -1 })
-        .limit(6)
+        .sort({ coin: -1 })
+        .limit(8)
         .toArray();
 
       res.send(bestWorkers);
@@ -166,6 +166,41 @@ async function run() {
       };
 
       const result = await userCollection.updateOne(filter, updateCoin);
+      res.send(result);
+    });
+
+    app.patch("/user/profile/:email", verifyToken, async (req, res) => {
+      const { email } = req.params;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const { name, photo } = req.body;
+      const filter = { email };
+      const updatedUserData = {
+        $set: { name, photo },
+      };
+      try {
+        const result = await userCollection.updateOne(filter, updatedUserData);
+        res.send(result);
+      } catch (err) {
+        console.error("Error updating profile:", err);
+        res.status(500).send({ message: "Failed to update profile" });
+      }
+    });
+
+    // role API
+
+    app.patch("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const { role } = req.body;
+      if (!["Admin", "Buyer", "Worker"].includes(role)) {
+        return res.status(400).send({ message: "Invalid role" });
+      }
+      const filter = { _id: new ObjectId(id) };
+      const updateRole = {
+        $set: { role },
+      };
+      const result = await userCollection.updateOne(filter, updateRole);
       res.send(result);
     });
 
